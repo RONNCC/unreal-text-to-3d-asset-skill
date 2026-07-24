@@ -14,6 +14,17 @@ image  ──▶ Hunyuan3D-2      ──▶  textured .glb
 It was built and validated end-to-end on a single Windows workstation (RTX 4070 Laptop, 8 GB VRAM /
 32 GB RAM), generating engines for an Unreal train‑racer game.
 
+## Example
+
+A real run of the pipeline — the prompt below became an SDXL image (Fooocus), then a textured `.glb`
+(Hunyuan3D‑2), shown here as a turntable of the generated mesh:
+
+![text-to-3d-asset demo: prompt → SDXL image → textured 3D turntable](docs/demo.gif)
+
+> Prompt: *"a vintage green steam locomotive, single centered object, plain white background,
+> studio product render, full side view"* — every frame after the title card is an actual output of
+> this skill (image from Fooocus, 3D turntable rendered from the Hunyuan3D‑2 `.glb`).
+
 ## What it does
 
 | Stage | Tool | Output |
