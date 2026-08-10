@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Photo -> 3D GLB via the running Hunyuan3D-2 Gradio server (localhost:8080).
+"""Photo -> 3D GLB via the running Hunyuan3D-2 server (default localhost:8080).
 
-Run with the bundle's python (has gradio_client):
-  C:\\AI\\HY3D2\\Hunyuan3D2_WinPortable\\python_standalone\\python.exe -s hunyuan_gen.py --image X.png --name Foo
+  python3 scripts/hunyuan_gen.py --image X.png --name Foo [--mode textured|shape]
 
-Only talks HTTP to the already-running server, so it reuses the loaded models
-(no HF env needed). Server must be up first (launch_server.bat).
+The server URL comes from --url, defaulting to the HUNYUAN_URL environment variable
+(or http://localhost:8080). Works against Tencent's official api_server.py
+(or its gradio_app.py) hosted locally or remotely. On Apple Silicon the GPU path is
+CUDA-only upstream, so expect MPS/CPU performance locally or point HUNYUAN_URL at a
+remote NVIDIA box. Server must be up first.
 """
 import argparse, os, sys, time, shutil
 from gradio_client import Client, handle_file
@@ -14,10 +16,10 @@ from gradio_client import Client, handle_file
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--image", required=True, help="path to input image")
-    ap.add_argument("--out", default=r"C:\AI\HY3D2\outputs", help="output folder for GLBs")
+    ap.add_argument("--out", default=os.environ.get("HUNYUAN_OUT", "output"), help="output folder for GLBs")
     ap.add_argument("--name", default=None, help="basename for output (defaults to image name)")
     ap.add_argument("--mode", choices=["textured", "shape"], default="textured")
-    ap.add_argument("--url", default="http://localhost:8080")
+    ap.add_argument("--url", default=os.environ.get("HUNYUAN_URL", "http://localhost:8080"))
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--steps", type=int, default=5)      # turbo default
     ap.add_argument("--octree", type=int, default=256)   # mesh resolution

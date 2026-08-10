@@ -1,117 +1,143 @@
 ---
 name: text-to-3d-asset
 description: >-
-  Generate a game-ready 3D asset by running the local AI pipeline sequentially:
+  Generate a game-ready 3D asset by running the AI pipeline sequentially:
   Fooocus (SDXL text-to-image) -> Hunyuan3D-2 (image-to-textured-GLB) -> optional
   Blender FBX convert + Unreal import. Use when the user wants to create/generate
   a 3D model, mesh, or racer for the Unreal train-racer project from a text prompt
-  or a photo. Covers launching both local Gradio services, generating, and wiring
-  the result into Unreal.
+  or a photo. This is the macOS + Docker conversion: services run as containers or
+  are reached over HTTP (FOOCUS_URL / HUNYUAN_URL), clients are plain python3.
 ---
 
-# Text / Photo -> 3D Asset Pipeline
+# Text / Photo -> 3D Asset Pipeline (macOS + Docker)
 
-Two local AI services on this machine chain together to turn a **text prompt or photo**
-into a **textured 3D `.glb`**, which then imports into the Unreal train-racer project.
-Related background: `hunyuan3d-deployment` memory.
+Two AI services chain together to turn a **text prompt or photo** into a **textured 3D `.glb`**,
+which then imports into the Unreal train-racer project. This skill is the macOS + Docker conversion
+of the upstream Windows skill (see README.md). Related background: `hunyuan3d-deployment` memory.
 
 ```
-prompt --(Fooocus SDXL)--> image.png --(Hunyuan3D-2)--> textured.glb --(Blender)--> .fbx --(Unreal MCP)--> BP racer
+prompt --(Fooocus SDXL)--> image.png --(Hunyuan3D-2)--> textured.glb --(Blender, Docker)--> .fbx --(Unreal MCP)--> BP racer
         [Stage 1: optional]            [Stage 2: core]              [Stage 3: optional, Unreal only]
 ```
 
 If the user already has a photo, **skip Stage 1** and start at Stage 2.
 
-**Validation status (2026-07-24):** Full chain tested end-to-end. Stage 1 automated via **Fooocus-API**
-(installed at `C:\AI\Fooocus-API`; REST `text-to-image` returned a clean locomotive image). Stage 2
-(`hunyuan_gen.py`) + Stage 3 convert (`glb_to_fbx.py`) working (image -> textured `.glb` -> `.fbx`,
-~60–130 s for the 3D step). Stage 3 Unreal import validated (Caitlin). Vanilla Fooocus is NOT drivable
-via `gradio_client` — that's why the Fooocus-API wrapper exists.
+**Validation status:** upstream validated end-to-end on Windows (2026-07-24): Stage 1 via **Fooocus-API**
+REST `text-to-image`; Stage 2 (`hunyuan_gen.py`) + Stage 3 convert (`glb_to_fbx.py`) working
+(image -> textured `.glb` -> `.fbx`, ~60–130 s for the 3D step); Stage 3 Unreal import validated (Caitlin).
+This macOS/Docker conversion keeps the same scripts and HTTP contracts; the container build of
+`Dockerfile.hunyuan` is best-effort/unvalidated (no official image exists).
 
-## ⚠️ Hardware rule (RTX 4070 Laptop, 8 GB VRAM / 32 GB RAM) — STRICT
-**Only one image/3D service loaded at a time.** Don't just avoid concurrent *generation* — don't keep
-both servers *resident*. Measured 2026-07-24: running Fooocus with the Hunyuan3D server still loaded
-made SDXL take **~14 min** (27 s/step) instead of ~1 min, because the two exhaust RAM and swap to disk.
-So: **stop the other server before generating.** Stage 1 → stop Hunyuan (8080), run Fooocus.
-Stage 2 → stop Fooocus-API (8888), run Hunyuan. Relaunching a server is cheap vs. the slowdown.
+## ⚠️ Apple-Silicon hardware rule — STRICT
 
-## Key paths
+- **Fooocus and Hunyuan3D are CUDA-oriented.** On Apple Silicon expect **CPU/MPS or a remote NVIDIA
+  box**, not equal performance to the upstream RTX 4070 Laptop baseline. Generation will be slower and
+  may need reduced resolutions. Honest expectation: works, but not GPU-fast locally.
+- **Only one heavy generation at a time.** The upstream machine (8 GB VRAM / 32 GB RAM) measurably
+  swapped when both servers were resident (~1 min -> ~14 min for SDXL). Run stages sequentially;
+  stop/leave down the server you are not using.
+- **Fooocus-API image is amd64-only** (`konieshadow/fooocus-api:latest`). On Apple Silicon Docker runs
+  it emulated on CPU. For real speed, run it on a Linux/NVIDIA host and set `FOOCUS_URL`.
+- **No official Hunyuan3D-2 image exists.** Prefer remote-service mode (below); `Dockerfile.hunyuan`
+  is a best-effort CUDA/amd64 build for Linux/NVIDIA hosts only.
+
+## Key paths (macOS convention)
+
 | Thing | Path |
 |---|---|
-| Fooocus | `C:\projects\unreal-game\Fooocus_win64_2-5-0` (launch `run.bat`) |
-| Fooocus UI | http://localhost:7865 |
-| Fooocus outputs | `C:\projects\unreal-game\Fooocus_win64_2-5-0\Fooocus\outputs\<YYYY-MM-DD>\` |
-| **Fooocus-API (REST)** | `C:\AI\Fooocus-API` — isolated `python_embeded`; `config.txt` reuses models |
-| Fooocus-API endpoint | http://127.0.0.1:8888 — `POST /v1/generation/text-to-image` |
-| Hunyuan3D | `C:\AI\HY3D2\Hunyuan3D2_WinPortable` (launch `launch_server.bat`) |
-| Hunyuan3D UI/API | http://localhost:8080 |
-| Bundle python (has gradio_client) | `C:\AI\HY3D2\Hunyuan3D2_WinPortable\python_standalone\python.exe` |
-| Blender | `C:\Program Files\Blender Foundation\Blender 4.4\blender.exe` |
 | Skill scripts | this skill's `scripts/` folder |
+| Python venv (client deps) | `~/AI/venv` (`python3 -m venv ~/AI/venv`) |
+| Image / GLB / FBX outputs | `~/AI/outputs` |
+| Docker compose file | this repo's `docker-compose.yml` |
+| Blender container helper | `bin/glb_to_fbx.sh` |
+| Fooocus-API endpoint | `http://localhost:8888` — `POST /v1/generation/text-to-image` (`FOOCUS_URL`) |
+| Hunyuan3D endpoint | `http://localhost:8080` (`HUNYUAN_URL`) |
+| Unreal (optional) | via the `unreal-mcp` server, e.g. `http://localhost:8899` |
 
----
+No `C:\` paths anywhere — clients use python3 from the venv and Docker containers for Blender.
+
+## Stage 0 — bring up the services (Docker)
+
+```bash
+# (optional) client deps, once
+python3 -m venv ~/AI/venv && source ~/AI/venv/bin/activate && pip install -r requirements.txt
+
+# Stage 1 service: Fooocus-API (published amd64 image; emulated/CPU on Apple Silicon)
+docker compose up -d fooocus
+
+# Stage 2 service: Hunyuan3D-2 — no official image; see remote-service mode below.
+#   On a Linux/NVIDIA host you may try:  docker compose --profile optional up -d hunyuan
+#   (best-effort CUDA build, NOT validated on Apple Silicon)
+```
+
+Services read their URLs from env vars, so both scripts are platform-neutral:
+
+```bash
+export FOOCUS_URL="${FOOCUS_URL:-http://localhost:8888}"
+export HUNYUAN_URL="${HUNYUAN_URL:-http://localhost:8080}"
+```
+
+### Remote-service mode (recommended for Hunyuan on a Mac)
+
+Run Hunyuan3D-2's official `api_server.py` (or the best-effort container) on any machine with an
+NVIDIA GPU and point the client at it:
+
+```bash
+export HUNYUAN_URL=http://my-gpu-host:8080
+export FOOCUS_URL=http://my-gpu-host:8888   # same trick for Fooocus
+```
+
+The scripts only speak HTTP — they do not care where the server runs.
 
 ## Stage 1 — Generate the image (Fooocus SDXL)
 
-Only if starting from a text prompt. Model already installed: `juggernautXL_v8Rundiffusion` (photoreal).
+Only if starting from a text prompt. Model already handled by the image:
+`juggernautXL_v8Rundiffusion` (photoreal) is the Fooocus-API default checkpoint.
 
 **For best downstream 3D:** prompt for a *single centered subject, plain/simple background,
 3/4 or front view, even lighting*. Hunyuan3D's auto background-removal expects one clear subject.
 Add e.g. `, single object, centered, plain white background, studio lighting, full view`.
 
-Vanilla Fooocus has no `gradio_client` API (Gradio 3.41.2, 0 named endpoints, `gr.State` generate
-flow). That's why the **Fooocus-API** REST wrapper is installed — use it (Method A). UI is the fallback.
+```bash
+export FOOCUS_URL=http://localhost:8888   # or a remote GPU host
+python3 scripts/fooocus_gen.py \
+  --prompt "a vintage green steam locomotive, single centered object, plain white background, studio lighting, full view" \
+  --out ~/AI/outputs/train.png
+```
 
-### Method A — Fooocus-API REST (installed, automated) ✅
-Isolated env at `C:\AI\Fooocus-API\python_embeded` (copy of Fooocus's embedded python + fastapi/uvicorn/
-sqlalchemy/colorlog/rich/chardet; its `python310._pth` was patched to add `..` and `../repositories/Fooocus`).
-`config.txt` (copied from the Fooocus install) makes it reuse juggernautXL + LoRA + expansion — no re-download.
+Blocks until done, saves the PNG. ~1–2 min on the upstream GPU; slower on Apple Silicon (CPU/emulation).
 
-1. **Stop the Hunyuan3D server first** (hardware rule): `$c=Get-NetTCPConnection -LocalPort 8080 -State Listen -EA SilentlyContinue; if($c){Stop-Process -Id $c.OwningProcess -Force}` (relaunch it for Stage 2).
-2. Launch if port 8888 isn't up (run from its dir so `./config.txt` is found):
-   `cmd /c "cd /d C:\AI\Fooocus-API && python_embeded\python.exe -s main.py --skip-pip --disable-preset-download --port 8888 --host 127.0.0.1 > C:\AI\Fooocus-API\api.log 2>&1"`
-   Wait for `Uvicorn running on http://127.0.0.1:8888` in `api.log` (loads SDXL, ~20–40 s).
-3. Generate:
-   `C:\AI\Fooocus-API\python_embeded\python.exe -s "<this skill>\scripts\fooocus_gen.py" --prompt "<subject>, single centered object, plain white background, studio lighting, full view" --out "<path\img.png>"`
-   Blocks until done, saves the PNG. ~1–2 min when Fooocus has the GPU to itself (10x slower if Hunyuan is still loaded).
+Either way, Stage 1 produces a PNG on disk. **Stop Fooocus-API (port 8888) before Stage 2.**
 
-### Method B — Fooocus UI (fallback, manual click)
-Launch `cmd /c "cd /d C:\projects\unreal-game\Fooocus_win64_2-5-0 && run.bat"` (cold start ~5–6 min;
-poll **port 7865**, the log doesn't flush). Open http://localhost:7865, enter prompt, click Generate,
-grab the newest PNG from `Fooocus\outputs\<date>\`.
+## Stage 2 — Image -> textured GLB (Hunyuan3D-2)  [core, validated upstream]
 
-Either way, Stage 1 produces a PNG on disk. **Stop Fooocus-API (port 8888) before Stage 2.** Pass the PNG to Stage 2.
-
----
-
-## Stage 2 — Image -> textured GLB (Hunyuan3D-2)  [core, validated]
-
-1. Ensure the server is up (it does **not** persist across sessions):
-   `Invoke-WebRequest http://localhost:8080 -UseBasicParsing`. If down, launch in background:
-   `cmd /c "C:\AI\HY3D2\Hunyuan3D2_WinPortable\launch_server.bat > C:\AI\HY3D2\server.log 2>&1"`
-   then watch `C:\AI\HY3D2\server.log` for `Uvicorn running on http://0.0.0.0:8080` (~1–2 min; models cached).
+1. Ensure a server is up, locally (remote-service mode above) or on a GPU host:
+   `curl -s -o /dev/null -w '%{http_code}' "$HUNYUAN_URL"` — if down, start it (docker/remote).
 2. Generate (uses the running server's API — reuses loaded models):
    ```
-   C:\AI\HY3D2\Hunyuan3D2_WinPortable\python_standalone\python.exe -s ^
-     "<this skill>\scripts\hunyuan_gen.py" --image "<path\to\image.png>" --name <AssetName>
+   python3 scripts/hunyuan_gen.py --image ~/AI/outputs/train.png --name Locomotive --out ~/AI/outputs
    ```
-   - `--mode textured` (default) = shape + texture (~60–75 s). `--mode shape` = geometry only (faster).
-   - Output GLB(s) land in `C:\AI\HY3D2\outputs\<AssetName>_textured.glb` (+ `_white.glb`).
-   - Runs as a background command if you don't want to block; it prints timing + output paths.
-3. **Preview it** before going further: decode is only meaningful visually — either open the GLB,
-   or continue to Stage 3 and screenshot in Unreal.
-
----
+   - `--mode textured` (default) = shape + texture (~60–75 s on upstream GPU). `--mode shape` = geometry only.
+   - Output GLB(s) land in `~/AI/outputs/<AssetName>_textured.glb` (+ `_white.glb`).
+   - Prints timing + output paths.
+3. **Preview it** before going further: decode is only meaningful visually — open the GLB
+   (macOS Quick Look previews GLB), or continue to Stage 3 and screenshot in Unreal.
 
 ## Stage 3 — Import into Unreal (optional; needs the editor + unreal-mcp running)
 
 The unreal-mcp `StaticMeshTools.import_file` accepts **only fbx/obj**, not glb. Convert first.
 
-1. **GLB -> FBX (embedded textures)** via Blender:
+1. **GLB -> FBX (embedded textures)** via the Blender container (pure CPU, works on Apple Silicon):
+   ```bash
+   bin/glb_to_fbx.sh ~/AI/outputs/Locomotive_textured.glb ~/AI/outputs/Locomotive_textured.fbx
    ```
-   "C:\Program Files\Blender Foundation\Blender 4.4\blender.exe" --background ^
-     --python "<this skill>\scripts\glb_to_fbx.py" -- --src "<asset.glb>" --dst "<asset.fbx>"
+   Equivalent manual call:
+   ```bash
+   docker compose run --rm blender-fbx --background \
+     --python /scripts/glb_to_fbx.py -- \
+     --src /io/Locomotive_textured.glb --dst /io/Locomotive_textured.fbx
    ```
+   (the script copies the file in and out of the compose `io/` mount; or mount your own dirs).
 2. **Import** (unreal-mcp): `StaticMeshTools.import_file` with
    `folder_path=/Game/Meshes/<Name>GLB`, `asset_name=<Name>`, `import_materials=true`,
    `import_textures=true`, `combine_meshes=true`. Then `AssetTools.save_assets`.
@@ -124,15 +150,11 @@ The unreal-mcp `StaticMeshTools.import_file` accepts **only fbx/obj**, not glb. 
    `ObjectTools.get/set_properties`. Compile + save the Blueprint. Verify by spawning an instance and
    `EditorAppToolset.CaptureViewport` (decode per the `unreal-mcp-screenshot-extraction` memory).
 
----
-
 ## Troubleshooting
-- **Hunyuan server down / not persisting**: expected across sessions — relaunch `launch_server.bat`.
-- **CUDA OOM during 3D texture**: another generation is running (Fooocus?) — serialize them; or drop
-  Hunyuan to `--profile 5` (already default in `launch_server.bat`).
+- **Hunyuan server down / not persisting**: expected across sessions — relaunch (docker/remote).
+- **CUDA OOM during 3D texture** (remote/GPU hosts): another generation is running — serialize them.
 - **Import rejects .glb**: convert to FBX first (Stage 3 step 1).
-- **hf.exe fails / model download WinError 1314**: use the Python `huggingface_hub` API with
-  `HF_HUB_DISABLE_SYMLINKS=1` (see `hunyuan3d-deployment` memory) — but for generation you only need
-  the server up, not re-downloads.
-- **Blender import shows one mesh named `*.ply`**: normal (Hunyuan meshes carry no node name); the FBX
-  still exports fine.
+- **Docker pull of `konieshadow/fooocus-api` is slow/CPU-only on Apple Silicon**: expected — that
+  image is amd64. Use a remote NVIDIA host and set `FOOCUS_URL`.
+- **Blender import shows one mesh named `*.ply`**: normal (Hunyuan meshes carry no node name); the
+  FBX still exports fine.

@@ -1,4 +1,4 @@
-# text-to-3d-asset
+# text-to-3d-asset (macOS + Docker)
 
 A [Claude Code](https://claude.com/claude-code) **skill** that turns a text prompt or a photo into a
 **game-ready, textured 3D asset** by orchestrating local AI services in sequence — then (optionally)
@@ -11,13 +11,18 @@ image  ──▶ Hunyuan3D-2      ──▶  textured .glb
 .fbx   ──▶ Unreal (MCP)     ──▶  StaticMesh / BP racer
 ```
 
-It was built and validated end-to-end on a single Windows workstation (RTX 4070 Laptop, 8 GB VRAM /
-32 GB RAM), generating engines for an Unreal train‑racer game.
+> **This repository is a macOS + Docker conversion of the upstream**
+> [unreal-game-assets-creation-skill](https://github.com/LaurentiuGabriel/unreal-game-assets-creation-skill).
+> The upstream skill was built and validated on a single Windows workstation
+> (RTX 4070 Laptop, 8 GB VRAM / 32 GB RAM). This fork rewrites the Windows paths,
+> PowerShell launchers, and embedded runtimes for macOS — using Docker containers for
+> Blender (GLB → FBX) and optionally Fooocus / Hunyuan3D-2 — and keeps every HTTP
+> client script platform-neutral behind `FOOCUS_URL` / `HUNYUAN_URL` env vars.
 
 ## Example
 
-A real run of the pipeline — the prompt below became an SDXL image (Fooocus), then a textured `.glb`
-(Hunyuan3D‑2), shown here as a turntable of the generated mesh:
+A real run of the original pipeline — the prompt below became an SDXL image (Fooocus), then a textured
+`.glb` (Hunyuan3D‑2), shown here as a turntable of the generated mesh:
 
 ![text-to-3d-asset demo: prompt → SDXL image → textured 3D turntable](docs/demo.gif)
 
@@ -31,7 +36,7 @@ A real run of the pipeline — the prompt below became an SDXL image (Fooocus), 
 |-------|------|--------|
 | 1. Text → image *(optional)* | [Fooocus](https://github.com/lllyasviel/Fooocus) SDXL, driven headlessly via the [Fooocus-API](https://github.com/mrhan1993/Fooocus-API) REST wrapper | `.png` |
 | 2. Image → 3D | [Hunyuan3D‑2](https://github.com/Tencent-Hunyuan/Hunyuan3D-2) (image‑to‑textured‑mesh) | textured `.glb` |
-| 3. Convert | [Blender](https://www.blender.org/) headless (`glTF → FBX`, embedded textures) | `.fbx` |
+| 3. Convert | [Blender](https://www.blender.org/) headless, in Docker (`glTF → FBX`, embedded textures) | `.fbx` |
 | 4. Import *(optional)* | Unreal Engine via the `unreal-mcp` server | StaticMesh + Blueprint |
 
 If you already have a photo, skip Stage 1 and start at Stage 2.
@@ -40,22 +45,77 @@ If you already have a photo, skip Stage 1 and start at Stage 2.
 
 ```
 SKILL.md                 # the skill instructions Claude Code loads
-scripts/fooocus_gen.py   # text → image via the Fooocus-API REST endpoint
-scripts/hunyuan_gen.py   # image → textured GLB via the Hunyuan3D-2 gradio API
+scripts/fooocus_gen.py   # text → image via the Fooocus-API REST endpoint (FOOCUS_URL)
+scripts/hunyuan_gen.py   # image → textured GLB via the Hunyuan3D-2 API (HUNYUAN_URL)
 scripts/glb_to_fbx.py    # GLB → FBX (embedded textures) via headless Blender
+Dockerfile.blender       # headless Blender 4.x (Ubuntu 24.04) for the FBX conversion
+Dockerfile.hunyuan       # BEST-EFFORT, unofficial Hunyuan3D-2 container (CUDA/amd64)
+docker-compose.yml       # fooocus + blender-fbx + (optional) hunyuan services
+bin/glb_to_fbx.sh        # one-shot GLB→FBX through the Blender container
+requirements.txt         # client-side pip deps (requests, gradio_client)
 ```
 
 ## Requirements
 
-- **Windows** with an **NVIDIA GPU (8 GB VRAM works; more is better)** and recent drivers.
-- [Hunyuan3D‑2](https://github.com/Tencent-Hunyuan/Hunyuan3D-2) running locally (this skill was set up
-  with the [WinPortable build](https://github.com/YanWenKun/Hunyuan3D-2-WinPortable)); its texture
-  extensions (`custom_rasterizer`, `differentiable_renderer`) compiled against a CUDA toolkit matching
-  its PyTorch build.
-- [Fooocus](https://github.com/lllyasviel/Fooocus) + the [Fooocus-API](https://github.com/mrhan1993/Fooocus-API)
-  wrapper (only needed for Stage 1 text‑to‑image).
-- [Blender 4.x](https://www.blender.org/) (only for Stage 3 FBX conversion).
+- **macOS** (Apple Silicon or Intel) with [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or colima/rancher) and Python 3.10+.
+- Python client deps:
+  ```bash
+  python3 -m venv ~/AI/venv && source ~/AI/venv/bin/activate
+  pip install -r requirements.txt
+  ```
 - An Unreal project with the `unreal-mcp` server (only for Stage 4 import).
+
+### Apple Silicon honesty note — please read
+
+- **Hunyuan3D-2 and Fooocus are CUDA-oriented.** The models were trained and are normally run on
+  NVIDIA GPUs. On Apple Silicon you should expect **CPU / MPS operation (or a remote NVIDIA box)**, not
+  equal performance to an 8 GB RTX card. Generation will be noticeably slower and may need reduced
+  resolutions / `--low_vram_mode`-style flags.
+- **Fooocus-API image is amd64-only**: `konieshadow/fooocus-api:latest`. On Apple Silicon Docker runs
+  it under emulation on CPU with no CUDA access — it works but is slow. Prefer running it on a
+  Linux/NVIDIA host and setting `FOOCUS_URL=http://<host>:8888`.
+- **Hunyuan3D-2 has no official Docker image.** Tencent publishes source + an `api_server.py` only.
+  `Dockerfile.hunyuan` is a best-effort CUDA/amd64 build, provided for Linux/NVIDIA hosts, and is
+  **not validated on Apple Silicon**. On a Mac the recommended path is **remote-service mode**: run
+  Hunyuan3D-2's official server somewhere with an NVIDIA GPU and set `HUNYUAN_URL=http://<host>:8080`.
+- The **Blender GLB→FBX stage is pure CPU** and runs identically on Apple Silicon via Docker.
+
+## Quick start (macOS)
+
+```bash
+# 1. Containers
+cd unreal-game-assets-creation-skill-mac
+docker compose up -d fooocus        # Stage 1: Fooocus-API on localhost:8888 (emulated/CPU on Apple Silicon)
+# or point at a remote GPU host instead:
+export FOOCUS_URL=http://my-gpu-host:8888
+
+# 2. Stage 1 (text → image) — skip if you already have a photo
+export HUNYUAN_URL=http://localhost:8080   # or a remote GPU host
+export HUNYUAN_URL=...
+python3 scripts/fooocus_gen.py --prompt "a vintage green steam locomotive, single centered object, plain white background, studio lighting, full side view" --out ~/AI/outputs/train.png
+
+# 3. Stage 2 (image → textured GLB)
+python3 scripts/hunyuan_gen.py --image ~/AI/outputs/train.png --name Locomotive --out ~/AI/outputs
+
+# 4. Stage 3 (GLB → FBX) via the Blender container
+bin/glb_to_fbx.sh ~/AI/outputs/Locomotive_textured.glb ~/AI/outputs/Locomotive_textured.fbx
+
+# 5. Stage 4: import the FBX into Unreal via unreal-mcp (see SKILL.md)
+```
+
+## Remote-service mode
+
+Both HTTP clients read their server URL from environment variables, so the skill works unchanged
+against a remote GPU box (Linux + NVIDIA) running the same containers — no macOS GPU needed:
+
+```bash
+export FOOCUS_URL=http://gpu-box:8888
+# remote box: docker compose up -d fooocus
+
+export HUNYUAN_URL=http://gpu-box:8080
+# remote box: docker compose --profile optional up -d hunyuan   # best-effort CUDA image
+# or run Tencent's official api_server.py on the remote box
+```
 
 ## Install as a Claude Code skill
 
@@ -71,19 +131,21 @@ cp -r text-to-3d-asset  ~/.claude/skills/text-to-3d-asset
 
 Then just ask, e.g. *"make me a 3D asset of a red double‑decker bus"* and the skill takes over.
 
-## ⚠️ Important: one service at a time (8 GB GPUs)
+## Troubleshooting
 
-Fooocus (SDXL) and Hunyuan3D each want most of an 8 GB card. Keeping **both loaded** exhausts VRAM +
-RAM and swaps to disk — a generation that takes ~1 min balloons to ~14 min. The skill therefore
-**stops the other server before generating**: stop Hunyuan (`:8080`) before Stage 1, stop Fooocus‑API
-(`:8888`) before Stage 2. Relaunching is cheap by comparison.
-
-## Note on paths
-
-`SKILL.md` and the scripts contain **absolute paths specific to the machine they were built on**
-(`C:\AI\...`, `C:\projects\...`). Adjust them to your own install locations before use.
+- **Hunyuan server down / not persisting**: expected across sessions — relaunch it (docker or remote
+  server). It does not persist state.
+- **CUDA OOM during 3D texture**: another generation is running (Fooocus?) — serialize them; lower
+  `--octree` / resolution, or use `--low_vram_mode` where supported.
+- **Import rejects .glb**: convert to FBX first (Stage 3 step 1).
+- **First generation is slow on MPS/CPU**: models download to `~/AI`/HF cache on first run; expect
+  much slower per-step times than the Windows/NVIDIA baseline. Lower resolutions help.
+- **Blender import shows one mesh named `*.ply`**: normal (Hunyuan meshes carry no node name); the
+  FBX still exports fine.
 
 ## Credits
 
-Built with [Claude Code](https://claude.com/claude-code). Wraps the excellent open‑source projects
+Conversion to macOS + Docker by [ronncc](https://github.com/ronncc), derived from
+[LaurentiuGabriel/unreal-game-assets-creation-skill](https://github.com/LaurentiuGabriel/unreal-game-assets-creation-skill)
+(made with [Claude Code](https://claude.com/claude-code)). Wraps the excellent open‑source projects
 linked above — all credit to their authors.

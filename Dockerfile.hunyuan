@@ -1,0 +1,32 @@
+# BEST-EFFORT, NOT OFFICIAL.
+#
+# Tencent publishes NO official Docker image for Hunyuan3D-2. This Dockerfile
+# is provided so the compose file has a Hunyuan service at all, but it is
+# CUDA-only and unvalidated here: it needs a Linux/amd64 host with an NVIDIA
+# GPU plus the nvidia-container-toolkit. On Apple Silicon it will NOT use the
+# GPU (the official code is CUDA-oriented; there is no MPS path upstream), so
+# do not expect usable performance from this container on a Mac.
+#
+# RECOMMENDED ON macOS: remote-service mode. Run Hunyuan3D-2's official
+# api_server.py (or the container below) on a machine with an NVIDIA GPU and
+# point this skill's client at it via the HUNYUAN_URL environment variable.
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git python3 python3-pip python3-venv build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN git clone --depth 1 https://github.com/Tencent-Hunyuan/Hunyuan3D-2.git /app/hunyuan3d
+WORKDIR /app/hunyuan3d
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir -e . \
+    && cd hy3dgen/texgen/custom_rasterizer && python3 setup.py install \
+    && cd ../differentiable_renderer && python3 setup.py install
+
+ENV HF_HOME=/app/hf
+EXPOSE 8080
+ENTRYPOINT ["python", "api_server.py"]
+CMD ["--host", "0.0.0.0", "--port", "8080"]

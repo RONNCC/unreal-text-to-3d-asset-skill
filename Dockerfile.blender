@@ -1,0 +1,16 @@
+# Headless Blender 4.x for GLB -> FBX conversion.
+#
+# Ubuntu 24.04 (noble) ships Blender 4.0.2, which supports the glTF import
+# and FBX export (with embedded textures) used by scripts/glb_to_fbx.py.
+# This conversion is pure CPU work, so it runs fine on Apple Silicon.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        blender \
+    && rm -rf /var/lib/apt/lists/*
+
+# docker-compose.yml bind-mounts this repo's scripts/ read-only at /scripts.
+WORKDIR /work
+ENTRYPOINT ["blender"]

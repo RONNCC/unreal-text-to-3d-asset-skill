@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Convert a GLB to FBX with embedded textures, headless via Blender.
 
-  "C:\\Program Files\\Blender Foundation\\Blender 4.4\\blender.exe" --background ^
-    --python glb_to_fbx.py -- --src C:\\path\\asset.glb --dst C:\\path\\asset.fbx
+  blender --background \\
+    --python glb_to_fbx.py -- --src asset.glb --dst asset.fbx
+
+On macOS, run it through the provided container instead of a local Blender install:
+
+  bin/glb_to_fbx.sh asset.glb asset.fbx   # docker compose run --rm blender-fbx ...
 
 The FBX is what Unreal's unreal-mcp StaticMeshTools.import_file accepts (it rejects .glb).
 """

@@ -1,0 +1,62 @@
+# macOS + Docker orchestration for the text-to-3d-asset skill.
+#
+#   docker compose up -d fooocus            # Stage 1 (amd64 image; emulated/CPU on Apple Silicon)
+#   docker compose run --rm blender-fbx --background --python /scripts/glb_to_fbx.py -- --src /io/x.glb --dst /io/x.fbx
+#   docker compose --profile optional up -d hunyuan   # Stage 2, best-effort CUDA container (NOT macOS GPU)
+#
+# See README.md and SKILL.md for the honest Apple-Silicon notes.
+
+services:
+  # Stage 3: GLB -> FBX (embedded textures), headless Blender 4.x.
+  # On-demand only (`run`), never started by `up`. Bind-mounted io/: read + write.
+  blender-fbx:
+    build:
+      context: .
+      dockerfile: Dockerfile.blender
+    image: unreal-skill-blender:4.0
+    profiles: ["tools"]
+    volumes:
+      - ./io:/io:rw
+      - ./scripts:/scripts:ro
+    command: ["--background", "--python", "/scripts/glb_to_fbx.py", "--", "--help"]
+
+  # Stage 1: Fooocus SDXL via the published Fooocus-API wrapper image.
+  # amd64-only image (konieshadow/fooocus-api:latest). On Apple Silicon Docker
+  # runs it under emulation on CPU with no CUDA access — usable but slow.
+  # For real speed, run this image on a Linux/NVIDIA host and set FOOCUS_URL.
+  fooocus:
+    image: konieshadow/fooocus-api:latest
+    platform: linux/amd64
+    ports:
+      - "8888:8888"
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+    volumes:
+      - fooocus_repositories:/app/repositories
+      - fooocus_pip_cache:/root/.cache/pip
+
+  # Stage 2: Hunyuan3D-2 — no official image exists; this is a best-effort
+  # CUDA/Linux/amd64 build (see Dockerfile.hunyuan). It will not use the GPU on
+  # a Mac, so the preferred macOS path is remote-service mode: set HUNYUAN_URL
+  # to a server that already runs Hunyuan3D-2's api_server.py and skip this.
+  hunyuan:
+    build:
+      context: .
+      dockerfile: Dockerfile.hunyuan
+    image: unreal-skill-hunyuan:best-effort
+    platform: linux/amd64
+    profiles: ["optional"]
+    ports:
+      - "8080:8080"
+    environment:
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HOME=/app/hf
+    volumes:
+      - hunyuan_hf_cache:/app/hf
+
+volumes:
+  fooocus_repositories:
+  fooocus_pip_cache:
+  hunyuan_hf_cache:
