@@ -6,3 +6,4 @@ output/
 .env
 .DS_Store
 Thumbs.db
+io/

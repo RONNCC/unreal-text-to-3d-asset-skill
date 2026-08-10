@@ -8,9 +8,10 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        blender \
+        blender python3-numpy \
     && rm -rf /var/lib/apt/lists/*
 
 # docker-compose.yml bind-mounts this repo's scripts/ read-only at /scripts.
 WORKDIR /work
-ENTRYPOINT ["blender"]
+# --python-use-system-env: the glTF addon needs numpy from the system Python.
+ENTRYPOINT ["blender", "--python-use-system-env"]
