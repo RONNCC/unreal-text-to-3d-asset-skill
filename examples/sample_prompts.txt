@@ -1,0 +1,33 @@
+# Sample Prompts for Tissue Engineering Assets
+
+## Scaffolds & Biomaterials
+- a tissue engineering scaffold, porous PCL structure, biodegradable, interconnected pores, 100-300 micron pore size, isometric view
+- a hydrogel scaffold for cartilage repair, gelatin methacryloyl, photorealistic, translucent, cellularized
+- a 3D printed beta-TCP bone scaffold, interconnected channels, osteoconductive, medical grade
+- a decellularized ECM scaffold, native tissue architecture preserved, acellular, regenerative medicine
+- a electrospun nanofiber mat for wound healing, aligned fibers, biodegradable polymer
+
+## Bioreactors & Culture Systems
+- a perfusion bioreactor for tissue engineering, glass vessel, tubing, sensors, sterile, laboratory setting
+- a rotating wall vessel bioreactor, NASA design, microgravity simulation, cell culture
+- a microfluidic organ-on-chip device, PDMS, endothelial cells, perfusable channels, microscope view
+- a stirred-tank bioreactor for MSC expansion, stainless steel, impeller, sparger, control system
+
+## Cells & Cellular Constructs
+- mesenchymal stem cells on a scaffold, confocal microscopy, fluorescent staining, 3D reconstruction
+- chondrocytes in a hydrogel construct, producing cartilage matrix, histological section
+- osteoblasts mineralizing a calcium phosphate scaffold, bone nodule formation, SEM image
+- vascularized tissue construct, endothelial network, perfusable, H&E staining
+- organoid culture, intestinal organoids, Matrigel dome, brightfield microscopy
+
+## Clinical & Surgical
+- a surgical implantation procedure, tissue engineered construct, operating room, sterile
+- an acellular dermal matrix for hernia repair, surgical mesh, laparoscopic placement
+- a cartilage defect repair with MACI, arthroscopic view, fibrin glue, scaffold integration
+
+## Style Modifiers (append to any prompt)
+- low-poly, game-ready, PBR textures, Unreal Engine 5
+- photorealistic, 8k, studio lighting, medical illustration style
+- isometric, clean background, product photography
+- cross-section, cutaway view, educational diagram
+- wireframe + shaded, technical visualization
