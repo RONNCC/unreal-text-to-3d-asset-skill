@@ -38,6 +38,8 @@
 
 set -euo pipefail
 
+cd "$(dirname "$0")/.."   # repo root: compose mounts ./io and ./scripts from here
+
 INPUT_DIR="${1:-examples/input}"
 OUTPUT_DIR="${2:-examples/output/batch_$(date +%Y%m%d)}"
 

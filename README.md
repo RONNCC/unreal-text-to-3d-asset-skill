@@ -46,13 +46,20 @@ If you already have a photo, skip Stage 1 and start at Stage 2.
 ```
 SKILL.md                 # the skill instructions Claude Code loads
 scripts/fooocus_gen.py   # text → image via the Fooocus-API REST endpoint (FOOCUS_URL)
-scripts/hunyuan_gen.py   # image → textured GLB via the Hunyuan3D-2 API (HUNYUAN_URL)
+scripts/hunyuan_gen.py   # image → textured GLB via Hunyuan3D-2 (HUNYUAN_URL);
+                         #   --server auto speaks gradio_app.py AND api_server.py
 scripts/glb_to_fbx.py    # GLB → FBX (embedded textures) via headless Blender
+scripts/validate_outputs.py  # structural validation of PNG/GLB/FBX artifacts
 Dockerfile.blender       # headless Blender 4.x (Ubuntu 24.04) for the FBX conversion
 Dockerfile.hunyuan       # BEST-EFFORT, unofficial Hunyuan3D-2 container (CUDA/amd64)
 docker-compose.yml       # fooocus + blender-fbx + (optional) hunyuan services
-bin/glb_to_fbx.sh        # one-shot GLB→FBX through the Blender container
-requirements.txt         # client-side pip deps (requests, gradio_client)
+bin/glb_to_fbx.sh        # one-shot GLB→FBX (docker, local blender, or bpy runner)
+requirements.txt         # client-side pip deps (requests; gradio_client for gradio mode)
+docs/PLAN.md             # the line-by-line remediation & validation plan
+docs/EXAMPLES.md         # text-in → asset-out gallery (real + sandbox-validated runs)
+docs/VALIDATION.md       # what was executed where, and what still needs a GPU
+tests/                   # mock AI servers + end-to-end no-GPU test suite
+examples/                # runnable pipeline scripts, prompt library, fixture assets
 ```
 
 ## Requirements
@@ -84,24 +91,29 @@ requirements.txt         # client-side pip deps (requests, gradio_client)
 
 ```bash
 # 1. Containers
-cd unreal-game-assets-creation-skill-mac
+cd unreal-text-to-3d-asset-skill
 docker compose up -d fooocus        # Stage 1: Fooocus-API on localhost:8888 (emulated/CPU on Apple Silicon)
 # or point at a remote GPU host instead:
 export FOOCUS_URL=http://my-gpu-host:8888
 
 # 2. Stage 1 (text → image) — skip if you already have a photo
-export HUNYUAN_URL=http://localhost:8080   # or a remote GPU host
-export HUNYUAN_URL=...
 python3 scripts/fooocus_gen.py --prompt "a vintage green steam locomotive, single centered object, plain white background, studio lighting, full side view" --out ~/AI/outputs/train.png
 
-# 3. Stage 2 (image → textured GLB)
+# 3. Stage 2 (image → textured GLB) — --server auto detects gradio vs FastAPI hosts
+export HUNYUAN_URL=http://localhost:8080   # or a remote GPU host
 python3 scripts/hunyuan_gen.py --image ~/AI/outputs/train.png --name Locomotive --out ~/AI/outputs
 
 # 4. Stage 3 (GLB → FBX) via the Blender container
 bin/glb_to_fbx.sh ~/AI/outputs/Locomotive_textured.glb ~/AI/outputs/Locomotive_textured.fbx
 
-# 5. Stage 4: import the FBX into Unreal via unreal-mcp (see SKILL.md)
+# 5. Verify the artifacts are structurally sound
+python3 scripts/validate_outputs.py ~/AI/outputs/train.png ~/AI/outputs/Locomotive_textured.glb ~/AI/outputs/Locomotive_textured.fbx
+
+# 6. Stage 4: import the FBX into Unreal via unreal-mcp (see SKILL.md)
 ```
+
+Or one shot: `bash examples/full_pipeline.sh "your prompt here"` — then see
+**[docs/EXAMPLES.md](docs/EXAMPLES.md)** for finished text→asset examples.
 
 ## Remote-service mode
 
@@ -116,6 +128,33 @@ export HUNYUAN_URL=http://gpu-box:8080
 # remote box: docker compose --profile optional up -d hunyuan   # best-effort CUDA image
 # or run Tencent's official api_server.py on the remote box
 ```
+
+## Examples (text in → asset out)
+
+Real prompts and the assets they produced — including the upstream GPU run
+(green locomotive → `docs/demo.gif`) and assets produced & validated by this
+repo's own code in a GPU-less sandbox — live in
+**[docs/EXAMPLES.md](docs/EXAMPLES.md)**. Ready-to-use prompts are collected in
+[examples/sample_prompts.txt](examples/sample_prompts.txt); runnable scripts in
+[examples/](examples/).
+
+## Validation — this repo is tested, not just written
+
+The AI models need a CUDA GPU, but everything else is executable and **has been
+executed** in this repo's CI sandbox. See **[docs/VALIDATION.md](docs/VALIDATION.md)**
+for the full record (including the bugs the audit found and fixed).
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt bpy
+.venv/bin/python tests/run_tests.py          # 6 end-to-end tests (mock AI + real Blender)
+PYTHON=.venv/bin/python bash tests/mock_e2e.sh  # full_pipeline.sh prompt→FBX against mocks
+```
+
+`tests/run_tests.py` drives both client scripts over real HTTP against mock
+servers, runs the repo's unmodified `scripts/glb_to_fbx.py` inside Blender to
+produce a real FBX (with the texture embedded), and validates every artifact.
+On a Mac with Docker, `bin/glb_to_fbx.sh` uses the identical script in the
+container instead.
 
 ## Install as a Claude Code skill
 

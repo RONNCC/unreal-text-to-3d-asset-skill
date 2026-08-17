@@ -4,3 +4,10 @@ __pycache__/
 .DS_Store
 Thumbs.db
 io/
+output/
+.venv/
+# generated example batches (keep the .gitkeepd directories)
+examples/output/*
+!examples/output/.gitkeep
+# local test caches
+.pytest_cache/

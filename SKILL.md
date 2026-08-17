@@ -24,9 +24,12 @@ If the user already has a photo, **skip Stage 1** and start at Stage 2.
 
 **Validation status:** upstream validated end-to-end on Windows (2026-07-24): Stage 1 via **Fooocus-API**
 REST `text-to-image`; Stage 2 (`hunyuan_gen.py`) + Stage 3 convert (`glb_to_fbx.py`) working
-(image -> textured `.glb` -> `.fbx`, ~60–130 s for the 3D step); Stage 3 Unreal import validated (Caitlin).
-This macOS/Docker conversion keeps the same scripts and HTTP contracts; the container build of
-`Dockerfile.hunyuan` is best-effort/unvalidated (no official image exists).
+(image -> textured `.glb` -> `.fbx`, ~60–130 s for the 3D step); Unreal import validated (Caitlin).
+This macOS/Docker conversion additionally passed a full no-GPU end-to-end validation
+(2026-08-17, see `docs/VALIDATION.md`): both HTTP clients against byte-faithful mock servers,
+the unmodified `glb_to_fbx.py` inside Blender producing a texture-embedded FBX, and
+`examples/full_pipeline.sh` running green start-to-finish via `tests/mock_e2e.sh`.
+The container build of `Dockerfile.hunyuan` remains best-effort/unvalidated (no official image exists).
 
 ## ⚠️ Apple-Silicon hardware rule — STRICT
 
@@ -109,7 +112,15 @@ Blocks until done, saves the PNG. ~1–2 min on the upstream GPU; slower on Appl
 
 Either way, Stage 1 produces a PNG on disk. **Stop Fooocus-API (port 8888) before Stage 2.**
 
-## Stage 2 — Image -> textured GLB (Hunyuan3D-2)  [core, validated upstream]
+## Stage 2 — Image -> textured GLB (Hunyuan3D-2)  [core, validated upstream + sandbox]
+
+Two DIFFERENT official servers exist, and `hunyuan_gen.py` speaks both
+(`--server auto` is the default and picks correctly; `api` needs only `requests`):
+
+| `--server` | Upstream program | Protocol | Notes |
+|---|---|---|---|
+| `gradio` | `gradio_app.py` (web UI) | gradio_client, fn `/generation_all` | what the Windows skill used; returns textured + white GLB |
+| `api` | `api_server.py` (FastAPI; what `Dockerfile.hunyuan` and most headless deployments run) | `POST /generate`, JSON with base64 image → raw GLB | server must be started with `--enable_tex` for textures; api_server's rembg is always on |
 
 1. Ensure a server is up, locally (remote-service mode above) or on a GPU host:
    `curl -s -o /dev/null -w '%{http_code}' "$HUNYUAN_URL"` — if down, start it (docker/remote).
@@ -120,16 +131,21 @@ Either way, Stage 1 produces a PNG on disk. **Stop Fooocus-API (port 8888) befor
    - `--mode textured` (default) = shape + texture (~60–75 s on upstream GPU). `--mode shape` = geometry only.
    - Output GLB(s) land in `~/AI/outputs/<AssetName>_textured.glb` (+ `_white.glb`).
    - Prints timing + output paths.
-3. **Preview it** before going further: decode is only meaningful visually — open the GLB
-   (macOS Quick Look previews GLB), or continue to Stage 3 and screenshot in Unreal.
+3. **Verify it** before going further:
+   `python3 scripts/validate_outputs.py ~/AI/outputs/Locomotive_textured.glb` — structural check
+   (mesh/verts/embedded texture). For a visual: macOS Quick Look previews GLB, or continue to
+   Stage 3 and screenshot in Unreal.
 
 ## Stage 3 — Import into Unreal (optional; needs the editor + unreal-mcp running)
 
 The unreal-mcp `StaticMeshTools.import_file` accepts **only fbx/obj**, not glb. Convert first.
 
-1. **GLB -> FBX (embedded textures)** via the Blender container (pure CPU, works on Apple Silicon):
+1. **GLB -> FBX (embedded textures)** via headless Blender (pure CPU, works on Apple Silicon).
+   `bin/glb_to_fbx.sh` auto-picks a runner: the Docker container (`blender`), a local Blender
+   install, or `pip install bpy` (`bpy`); force one with `GLB2FBX_RUNNER=docker|blender|bpy`:
    ```bash
    bin/glb_to_fbx.sh ~/AI/outputs/Locomotive_textured.glb ~/AI/outputs/Locomotive_textured.fbx
+   python3 scripts/validate_outputs.py ~/AI/outputs/Locomotive_textured.fbx   # expect: Kaydara FBX 7.4
    ```
    Equivalent manual call:
    ```bash
