@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # full_pipeline.sh - End-to-end text prompt → FBX for Unreal via Docker
 #
 # ========================================================================
@@ -12,7 +12,8 @@
 # DOCKERFILES & SERVICES USED:
 #   • docker-compose.yml  → defines services: fooocus, hunyuan, blender-fbx
 #   • Dockerfile.blender  → builds 'unreal-skill-blender:4.0' (Ubuntu 24.04 + Blender 4.0.2)
-#   • Dockerfile.hunyuan  → builds 'unreal-skill-hunyuan:best-effort' (CUDA 12.1, UNVALIDATED on Mac)
+#   • Dockerfile.hunyuan  → builds 'unreal-skill-hunyuan:best-effort' (CUDA 12.1,
+#                           api_server.py with --enable_tex; UNVALIDATED on Mac)
 #   • konieshadow/fooocus-api:latest  → public amd64 image for Fooocus SDXL (pulled, not built)
 #
 # EXACT COMMANDS A USER RUNS:
@@ -40,56 +41,66 @@
 #   - For production: run Fooocus/Hunyuan on a Linux/NVIDIA host and set
 #     FOOCUS_URL / HUNYUAN_URL to point at those remote endpoints.
 #   - Blender conversion IS native and fast on Apple Silicon.
+#
+# TESTABILITY:
+#   FOOCUS_URL/HUNYUAN_URL can point at the mock servers in tests/mock_servers/
+#   to dry-run this entire script without a GPU (except the dockerized FBX step);
+#   see docs/VALIDATION.md for the exact mock-run transcript.
 # ========================================================================
-
 set -euo pipefail
 
-PROMPT="${1:-a tissue engineering scaffold, porous, PCL, biodegradable, isometric view}"
-OUT_DIR="examples/output/$(date +%Y%m%d_%H%M%S)"
+cd "$(dirname "$0")/.."   # repo root, so relative paths in compose/scripts resolve
+
+PROMPT="${1:-a vintage green steam locomotive, single centered object, plain white background, studio product render, full side view}"
+OUT_DIR="${OUT_DIR:-examples/output/$(date +%Y%m%d_%H%M%S)}"; PYTHON="${PYTHON:-python3}"
+NAME="${NAME:-Asset}"
 mkdir -p "$OUT_DIR"
 
 # -------------------------------------------------------------------------
-# Stage 1: Text → Image via Fooocus (docker compose service)
+# Stage 1: Text → Image via Fooocus-API (docker compose service or remote)
 # -------------------------------------------------------------------------
-echo "[1/3] Generating image from prompt via Fooocus container..."
-# Use the running fooocus service (started via 'docker compose up -d fooocus')
-# or a remote FOOCUS_URL. The service exposes port 8888.
+echo "[1/3] Generating image from prompt via Fooocus ..."
 FOOCUS_URL="${FOOCUS_URL:-http://localhost:8888}"
 echo "    Using FOOCUS_URL=$FOOCUS_URL"
 
-python3 scripts/fooocus_gen.py \
+# NB: the flag is --out (a FILE path). fooocus_gen.py has no --output option.
+"$PYTHON" scripts/fooocus_gen.py \
   --prompt "$PROMPT" \
-  --output "$OUT_DIR/image.png" \
+  --out "$OUT_DIR/image.png" \
   --url "$FOOCUS_URL"
 
 # -------------------------------------------------------------------------
 # Stage 2: Image → 3D (GLB) via Hunyuan3D-2
 # -------------------------------------------------------------------------
-echo "[2/3] Generating 3D model from image via Hunyuan container..."
+echo "[2/3] Generating 3D model from image via Hunyuan3D-2 ..."
 # Prefer remote Hunyuan (GPU) on Mac. Local container is best-effort CUDA.
 HUNYUAN_URL="${HUNYUAN_URL:-http://localhost:8080}"
 echo "    Using HUNYUAN_URL=$HUNYUAN_URL"
 
-python3 scripts/hunyuan_gen.py \
+# NB: --out is a DIRECTORY; the GLB lands at <dir>/<NAME>_textured.glb.
+# --server auto speaks gradio_app.py or api_server.py (FastAPI) transparently.
+"$PYTHON" scripts/hunyuan_gen.py \
   --image "$OUT_DIR/image.png" \
-  --output "$OUT_DIR/model.glb" \
+  --out "$OUT_DIR" \
+  --name "$NAME" \
+  --server auto \
   --url "$HUNYUAN_URL"
+
+GLB="$OUT_DIR/${NAME}_textured.glb"
+[ -f "$GLB" ] || GLB="$(ls "$OUT_DIR/${NAME}"_*.glb | head -1)"   # shape mode fallback
 
 # -------------------------------------------------------------------------
 # Stage 3: GLB → FBX via headless Blender (docker compose run)
 # -------------------------------------------------------------------------
-echo "[3/3] Converting GLB → FBX via Blender container..."
-# 'docker compose run --rm blender-fbx' mounts ./io at /io.
-# Copy GLB into ./io, run conversion, copy FBX back.
-mkdir -p io
-cp "$OUT_DIR/model.glb" io/model.glb
+echo "[3/3] Converting GLB → FBX via Blender container ..."
+bin/glb_to_fbx.sh "$GLB" "$OUT_DIR/${NAME}_textured.fbx"
 
-docker compose run --rm blender-fbx \
-  --background --python /scripts/glb_to_fbx.py \
-  -- --src /io/model.glb --dst /io/model.fbx
-
-cp io/model.fbx "$OUT_DIR/model.fbx"
-rm -f io/model.glb io/model.fbx
+# -------------------------------------------------------------------------
+# Verify: structural validation of every artifact produced
+# -------------------------------------------------------------------------
+if [ -f scripts/validate_outputs.py ]; then
+  "$PYTHON" scripts/validate_outputs.py "$OUT_DIR/image.png" "$GLB" "$OUT_DIR/${NAME}_textured.fbx"
+fi
 
 echo "Done! Output in $OUT_DIR/"
 ls -la "$OUT_DIR/"

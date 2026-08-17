@@ -1,2 +1,3 @@
-requests>=2.31
-gradio_client>=1.3
+# Client-side dependencies (install into a venv: python3 -m venv ~/AI/venv)
+requests>=2.31        # fooocus_gen.py always; hunyuan_gen.py when --server api/auto
+gradio_client>=1.3    # only needed for hunyuan_gen.py --server gradio (gradio_app.py servers)

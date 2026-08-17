@@ -29,4 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 ENV HF_HOME=/app/hf
 EXPOSE 8080
 ENTRYPOINT ["python", "api_server.py"]
-CMD ["--host", "0.0.0.0", "--port", "8080"]
+# --enable_tex is REQUIRED: without it the server never loads the texture pipeline
+# and every textured request (this skill's default mode) fails server-side.
+# api_server.py's default port is 8081; we pin 8080 to match the compose mapping.
+CMD ["--host", "0.0.0.0", "--port", "8080", "--enable_tex"]

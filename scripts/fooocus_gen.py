@@ -36,7 +36,11 @@ def main():
     }
     print(f"[fooocus] generating: {args.prompt!r}", flush=True)
     t0 = time.time()
-    r = requests.post(args.url + "/v1/generation/text-to-image", json=payload, timeout=1800)
+    try:
+        r = requests.post(args.url + "/v1/generation/text-to-image", json=payload, timeout=1800)
+    except requests.ConnectionError:
+        sys.exit(f"[fooocus] ERROR: cannot connect to {args.url} — is Fooocus-API running? "
+                 f"('docker compose up -d fooocus', or set FOOCUS_URL to a remote host)")
     r.raise_for_status()
     data = r.json()
     img = data[0] if isinstance(data, list) and data else data
