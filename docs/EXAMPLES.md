@@ -154,6 +154,29 @@ GPU hosts) and the identical script produces real AI assets.
 
 ---
 
+## Example F — Nessie's Little Loch isometric park `[procedural sandbox build]`
+
+A complete, compact environment example rather than a single generated prop:
+Nessie forms the central family coaster, surrounded by a view wheel, lily-cup
+spinner, baby-Nessie carousel, kiosk, snack cart, entrance, guest, paths and
+park dressing. The editable scene and both engine interchange formats are in
+[`examples/nessie_amusement_park/`](../examples/nessie_amusement_park/).
+
+![Nessie's Little Loch isometric amusement park](../examples/nessie_amusement_park/nessie_amusement_park.png)
+
+| Deliverable | Notes |
+|---|---|
+| [`DESIGN_AND_AUDIT.md`](../examples/nessie_amusement_park/DESIGN_AND_AUDIT.md) | Concept audit, layout, attraction roster, post-build audit and Unreal plan |
+| [`build_nessie_park.py`](../examples/nessie_amusement_park/build_nessie_park.py) | Deterministic Blender generator; no external assets or textures |
+| `nessie_amusement_park.blend` | Editable source, organized into named attraction collections |
+| `nessie_amusement_park.glb` | glTF 2.0 · 148 meshes · 24,045 vertices · 18 materials |
+| `nessie_amusement_park.fbx` | Unreal-ready FBX 7.4 produced by the repository converter |
+
+The model and preview were built and rendered with Blender 5.0.1 CPU-only. This
+is deliberately a procedural low-poly example, not an Hunyuan AI output.
+
+---
+
 ## More prompt patterns (see `examples/sample_prompts.txt` for the full set)
 
 **Vehicles / props for the Unreal train-racer:**
