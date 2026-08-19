@@ -11,3 +11,12 @@ examples/output/*
 !examples/output/.gitkeep
 # local test caches
 .pytest_cache/
+
+# headless bpy stub shared objects (sandbox only; see render.sh)
+.stublibs/
+
+# keep the nessie_park example deliverables (render + GLB) but ignore scratch
+!examples/nessie_park/output/
+examples/nessie_park/output/*
+!examples/nessie_park/output/nessie_park.png
+!examples/nessie_park/output/nessie_park.glb
